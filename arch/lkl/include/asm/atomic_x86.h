@@ -1,0 +1,1 @@
+../../../x86/include/asm/atomic.h

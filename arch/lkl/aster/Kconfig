@@ -1,0 +1,23 @@
+config ASTER_RBUF
+	bool
+	default n
+
+config ASTER_NETWORK
+	bool "LKL network device support for Asterinas"
+	default n
+	select ASTER_RBUF
+	help
+	  Say "Y" if providing network device support for Asterains is needed;
+	  say "N" otherwise.
+
+	  If unsure, say "N".
+
+config ASTER_BLOCK
+	bool "LKL block device support for Asterinas"
+	default n
+	select ASTER_RBUF
+	help
+	  Say "Y" if providing block device support for Asterains is needed;
+	  say "N" otherwise.
+
+	  If unsure, say "N".
