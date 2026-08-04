@@ -98,7 +98,7 @@ int rbuf_init_in(struct rbuf_in *rb)
 	BUILD_BUG_ON(sizeof(struct rbuf_hdr) + RBUF_ITEM_SIZE * ITEM_NUM >
 		     PAGE_SIZE);
 
-	rb->base = (struct rbuf_hdr *)__get_free_page(GFP_KERNEL);
+	rb->base = (struct rbuf_hdr *)get_zeroed_page(GFP_KERNEL);
 	if (!rb->base)
 		return -ENOMEM;
 
@@ -114,7 +114,7 @@ int rbuf_init_out(struct rbuf_out *rb)
 	BUILD_BUG_ON(sizeof(struct rbuf_hdr) + RBUF_ITEM_SIZE * ITEM_NUM >
 		     PAGE_SIZE);
 
-	rb->base = (struct rbuf_hdr *)__get_free_page(GFP_KERNEL);
+	rb->base = (struct rbuf_hdr *)get_zeroed_page(GFP_KERNEL);
 	if (!rb->base)
 		return -ENOMEM;
 
