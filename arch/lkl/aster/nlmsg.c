@@ -17,6 +17,8 @@
 
 #define MAX_NLMSG_SOCKETS 64
 #define NLMSG_MAX_LEN 10240
+/* Use fixed negative port IDs away from normal task PIDs. */
+#define ASTER_NLMSG_PORTID_BASE (-4097)
 
 struct aster_nlmsg_ctx {
 	unsigned int slot;
@@ -35,6 +37,11 @@ static bool aster_nlmsg_valid_slot(int slot)
 static bool aster_nlmsg_valid_len(int len)
 {
 	return len > 0 && len <= NLMSG_MAX_LEN;
+}
+
+static u32 aster_nlmsg_portid(int slot)
+{
+	return (u32)(ASTER_NLMSG_PORTID_BASE - slot);
 }
 
 static void aster_nlmsg_data_ready(struct sock *sk)
@@ -82,6 +89,7 @@ static void aster_nlmsg_quiesce_sock(struct socket *sock)
 
 asmlinkage long sys_aster_nlmsg_create(int slot, int protocol, int flags)
 {
+	struct sockaddr_nl addr;
 	struct aster_nlmsg_ctx *ctx;
 	struct socket *sock;
 	int ret;
@@ -94,34 +102,51 @@ asmlinkage long sys_aster_nlmsg_create(int slot, int protocol, int flags)
 		return -ENOMEM;
 	ctx->slot = slot;
 
+	mutex_lock(&aster_nlmsg_lock);
+	if (aster_nlmsg_sockets[slot]) {
+		ret = -EEXIST;
+		goto out_unlock_free_ctx;
+	}
+
 	ret = sock_create_kern(&init_net, AF_NETLINK, SOCK_RAW | flags,
 			       protocol, &sock);
-	if (ret) {
-		kfree(ctx);
-		return ret;
-	}
+	if (ret)
+		goto out_unlock_free_ctx;
+
+	memset(&addr, 0, sizeof(addr));
+	addr.nl_family = AF_NETLINK;
+	addr.nl_pid = aster_nlmsg_portid(slot);
+	ret = sock->ops->bind(sock, (struct sockaddr *)&addr, sizeof(addr));
+	if (ret)
+		goto out_release_sock;
 
 	write_lock_bh(&sock->sk->sk_callback_lock);
 	rcu_assign_sk_user_data(sock->sk, ctx);
 	sock->sk->sk_data_ready = aster_nlmsg_data_ready;
 	write_unlock_bh(&sock->sk->sk_callback_lock);
 
-	mutex_lock(&aster_nlmsg_lock);
-	if (aster_nlmsg_sockets[slot]) {
-		mutex_unlock(&aster_nlmsg_lock);
-		aster_nlmsg_quiesce_sock(sock);
-		sock_release(sock);
-		return -EEXIST;
-	}
 	aster_nlmsg_sockets[slot] = sock;
 	mutex_unlock(&aster_nlmsg_lock);
 
 	return 0;
+
+out_release_sock:
+	sock_release(sock);
+out_unlock_free_ctx:
+	mutex_unlock(&aster_nlmsg_lock);
+	kfree(ctx);
+	return ret;
 }
 
 asmlinkage long sys_aster_nlmsg_send(int sock_idx, char __user *ubuf, int len)
 {
-	struct msghdr msg = { };
+	struct sockaddr_nl addr = {
+		.nl_family = AF_NETLINK,
+	};
+	struct msghdr msg = {
+		.msg_name = &addr,
+		.msg_namelen = sizeof(addr),
+	};
 	struct kvec iov;
 	struct socket *sock;
 	void *buf;

@@ -3,7 +3,9 @@
 #define pr_fmt(fmt) "aster-net: " fmt
 
 #include <asm/cpu_host.h>
+#include <linux/completion.h>
 #include <linux/init.h>
+#include <linux/jiffies.h>
 #include <linux/kstrtox.h>
 #include <linux/netdevice.h>
 #include <linux/rtnetlink.h>
@@ -17,6 +19,7 @@ static struct rbuf_out rxq;
 static struct rbuf_in rxq_done;
 static struct rbuf_in txq;
 static struct rbuf_out txq_prep;
+static DECLARE_COMPLETION(anet_device_registered);
 
 struct rbuf_item {
 	void *priv;
@@ -262,6 +265,70 @@ struct wlandev_descriptor {
 extern struct netdev_descriptor asterinas_netdev_descriptor;
 extern struct wlandev_descriptor asterinas_wlan_descriptor;
 
+#define ANET_DEVICE_WAIT_MS 10000
+
+static bool anet_is_target_device(const struct net_device *dev)
+{
+	return !strcmp(dev->name, "eth0") || !strcmp(dev->name, "wlan0");
+}
+
+static struct net_device *anet_get_device(void)
+{
+	struct net_device *dev;
+
+	dev = dev_get_by_name(&init_net, "eth0");
+	if (dev)
+		return dev;
+
+	return dev_get_by_name(&init_net, "wlan0");
+}
+
+static int anet_device_event(struct notifier_block *nb, unsigned long event,
+			     void *ptr)
+{
+	struct net_device *dev = netdev_notifier_info_to_dev(ptr);
+
+	if (event == NETDEV_REGISTER && anet_is_target_device(dev))
+		complete_all(&anet_device_registered);
+
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block anet_device_notifier = {
+	.notifier_call = anet_device_event,
+};
+
+static struct net_device *anet_wait_device(void)
+{
+	struct net_device *dev;
+	int err;
+
+	dev = anet_get_device();
+	if (dev)
+		return dev;
+
+	if (!IS_ENABLED(CONFIG_IWLWIFI))
+		return NULL;
+
+	err = register_netdevice_notifier(&anet_device_notifier);
+	if (err < 0) {
+		pr_warn("device notifier not available: %d\n", err);
+		return NULL;
+	}
+
+	dev = anet_get_device();
+	if (!dev) {
+		pr_info("waiting for network device\n");
+		wait_for_completion_timeout(&anet_device_registered,
+					    msecs_to_jiffies(ANET_DEVICE_WAIT_MS));
+		dev = anet_get_device();
+	}
+
+	unregister_netdevice_notifier(&anet_device_notifier);
+
+	return dev;
+}
+
 #if IS_ENABLED(CONFIG_CFG80211)
 static int anet_wiphy_index(struct wiphy *wiphy, u32 *idx)
 {
@@ -329,20 +396,20 @@ static __init int anet_init(void)
 
 	BUILD_BUG_ON(RBUF_ITEM_SIZE != sizeof(struct rbuf_item));
 
-	memset(&xdp, 0, sizeof(xdp));
-	xdp.command = XDP_SETUP_PROG;
-	xdp.prog = bpf_prog_alloc(PAGE_SIZE, GFP_KERNEL);
-	if (!xdp.prog)
-		return -ENOMEM;
-	/* we're going to leak xdp.prog */
-
-	dev = dev_get_by_name(&init_net, "eth0");
-	if (!dev)
-		dev = dev_get_by_name(&init_net, "wlan0");
+	dev = anet_wait_device();
 	if (!dev) {
 		pr_warn("device not available\n");
 		return -ENODEV;
 	}
+
+	memset(&xdp, 0, sizeof(xdp));
+	xdp.command = XDP_SETUP_PROG;
+	xdp.prog = bpf_prog_alloc(PAGE_SIZE, GFP_KERNEL);
+	if (!xdp.prog) {
+		dev_put(dev);
+		return -ENOMEM;
+	}
+	/* we're going to leak xdp.prog */
 
 	rtnl_lock();
 
