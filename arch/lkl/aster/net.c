@@ -4,6 +4,7 @@
 
 #include <asm/cpu_host.h>
 #include <linux/completion.h>
+#include <linux/if_ether.h>
 #include <linux/init.h>
 #include <linux/jiffies.h>
 #include <linux/kstrtox.h>
@@ -48,6 +49,7 @@ rx_handler_result_t anet_rx_callback(struct sk_buff **pskb)
 
 	struct sk_buff *skb = *pskb;
 	struct rbuf_item item;
+	int err;
 
 	if (skb->dev != n_dev)
 		return RX_HANDLER_PASS;
@@ -62,13 +64,25 @@ rx_handler_result_t anet_rx_callback(struct sk_buff **pskb)
 		return RX_HANDLER_CONSUMED;
 	}
 
+	err = skb_linearize(skb);
+	if (err < 0) {
+		pr_warn_ratelimited("packet linearization failed: %d\n", err);
+		consume_skb(skb);
+		return RX_HANDLER_CONSUMED;
+	}
+
 	item.priv = skb;
 	item.buf = skb_mac_header(skb);
 	item.len = skb_tail_pointer(skb) - item.buf;
 
 	/* FIXME: Is this racy? */
 	--num_free;
-	rbuf_enqueue(&rxq, &item);
+	err = rbuf_enqueue(&rxq, &item);
+	if (err < 0) {
+		++num_free;
+		consume_skb(skb);
+		return RX_HANDLER_CONSUMED;
+	}
 
 	/* FIXME: Consider more about memory orders */
 	if (rbuf_num_enqueued(&rxq) <= 1)
@@ -113,7 +127,8 @@ static void anet_tx_work(void)
 		__skb_put(skb, item.len);
 
 		skb->dev = n_dev;
-		skb->dev->netdev_ops->ndo_start_xmit(skb, n_dev);
+		skb->protocol = skb_eth_hdr(skb)->h_proto;
+		dev_queue_xmit(skb);
 
 		pr_debug("packet transmitted\n");
 	}
