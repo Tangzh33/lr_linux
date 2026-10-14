@@ -15,6 +15,7 @@ p_tscfreq:  .quad tsc_frequency
 p_syscall:  .quad syscall_argument_page
 p_netdev:   .quad asterinas_netdev_descriptor
 p_blkdev:   .quad asterinas_block_descriptor
+p_wlandev:  .quad asterinas_wlan_descriptor
 
 .section ".setup", "ax", @progbits
 .code64
@@ -54,6 +55,20 @@ asterinas_netdev_descriptor:
 	.quad 0  # rxq_done
 	.quad 0  # txq
 	.quad 0  # txq_prep
+
+.align 8
+.global asterinas_wlan_descriptor
+asterinas_wlan_descriptor:
+	.long 0  # is_ready
+	.long 0  # lkl_ifindex
+	.skip 16 # lkl_ifname
+	.long 0  # lkl_wiphy
+	.skip 4  # _pad
+	.quad 0  # lkl_wdev
+	.skip 6  # mac
+	.skip 2  # _pad
+	.long 0  # mtu
+	.skip 4  # _pad
 
 .align 8
 .global asterinas_block_descriptor
