@@ -44,7 +44,10 @@ enum {
 	ASTER_VMA_UNMAP,
 	/* FILE */
 	ASTER_FW_READ,
+	ASTER_POLL_WAKE,
 	ASTER_FD_MAP,
+	ASTER_CDEV_REGISTER,
+	ASTER_DEVTMPFS_CREATE,
 	/* PCI */
 	ASTER_PCI_CONF_READ,
 	ASTER_PCI_CONF_WRITE,
@@ -52,7 +55,6 @@ enum {
 	ASTER_PCI_IRQ_INIT,
 	ASTER_PCI_GET_MSI,
 	ASTER_PCI_PUT_MSI,
-	ASTER_NLMSG_READY,
 };
 
 extern long aster_call(long arg0, long arg1, long arg2, long type);
@@ -366,9 +368,25 @@ static long aster_fw_read(const char *path, unsigned long path_size, void *buf,
 			     ASTER_FW_READ);
 }
 
-static int aster_fd_map(int fd)
+static void aster_poll_wake(unsigned long file, unsigned int events)
+{
+	(*aster_call)(file, events, 0, ASTER_POLL_WAKE);
+}
+
+static unsigned long aster_fd_map(int fd)
 {
 	return (*aster_call)(fd, 0, 0, ASTER_FD_MAP);
+}
+
+static void aster_cdev_register(unsigned int major, const char *name)
+{
+	(*aster_call)(major, (long)name, 0, ASTER_CDEV_REGISTER);
+}
+
+static int aster_devtmpfs_create(unsigned long mnt, unsigned long path,
+				 unsigned int devt)
+{
+	return (*aster_call)(mnt, path, devt, ASTER_DEVTMPFS_CREATE);
 }
 
 static void aster_jmpbuf_set(struct lkl_jmp_buf *jmpb, void (*f)(void))
@@ -419,11 +437,6 @@ static void aster_pci_put_msi(struct lkl_pci_dev *dev, int irq)
 	(void)dev;
 
 	aster_call(irq, 0, 0, ASTER_PCI_PUT_MSI);
-}
-
-void aster_nlmsg_ready(unsigned int slot)
-{
-	aster_call((long)slot, 0, 0, ASTER_NLMSG_READY);
 }
 
 static int aster_pci_conf_read(struct lkl_pci_dev *dev, int where, int size,
@@ -560,7 +573,10 @@ static struct lkl_host_operations host_ops = {
 	.vma_insert = &aster_vma_insert,
 	.vma_unmap = &aster_vma_unmap,
 	.firmware_read = &aster_fw_read,
+	.poll_wake = &aster_poll_wake,
 	.fd_map = &aster_fd_map,
+	.cdev_register = &aster_cdev_register,
+	.devtmpfs_create = &aster_devtmpfs_create,
 	.jmp_buf_set = &aster_jmpbuf_set,
 	.jmp_buf_longjmp = &aster_jmpbuf_jump,
 	.pci_ops = &pci_ops,

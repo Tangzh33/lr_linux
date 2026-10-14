@@ -87,7 +87,8 @@ void exit_task_stack_account(struct task_struct *tsk);
 static inline int object_is_on_stack(const void *obj)
 {
 #ifdef CONFIG_LKL_ASTER
-	return (unsigned long)obj < 0xffffffff00000000ul;
+	/* Outside [-2 GiB, +2 GiB] */
+	return (unsigned long)obj + 0x80000000ul > 0x100000000ul;
 #else
 	void *stack = task_stack_page(current);
 

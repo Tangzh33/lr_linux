@@ -58,9 +58,11 @@ int lkl_set_doorbell_irq_handler(void (*handler)(void))
 	return 0;
 }
 
+/* IRQs managed by LKL */
+#define NR_LKL_IRQS (NR_IRQS / 2)
 static struct irq_info {
 	const char *user;
-} irqs[NR_IRQS];
+} irqs[NR_LKL_IRQS];
 
 bool irqs_enabled;
 
@@ -166,7 +168,7 @@ int lkl_get_free_irq(const char *user)
 	int ret = -EBUSY;
 
 	/* 0 is not a valid IRQ */
-	for (i = 1; i < NR_IRQS; i++) {
+	for (i = 1; i < NR_LKL_IRQS; i++) {
 		if (!irqs[i].user) {
 			irqs[i].user = user;
 			if (lkl_is_running())
@@ -200,7 +202,7 @@ void init_IRQ(void)
 {
 	int i;
 
-	for (i = 0; i < NR_IRQS; i++)
+	for (i = 0; i < NR_LKL_IRQS; i++)
 		irq_set_chip_and_handler(i, &dummy_irq_chip, handle_simple_irq);
 
 	pr_info("lkl: irqs initialized\n");

@@ -1,4 +1,7 @@
 CONFIG_PCI=y
 CONFIG_NVIDIA=y
 
+# FIXME: Setting this value to 15 is a workaround for loading large firmware
+# images because vmalloc() is not currently supported. Consider reducing this
+# value if a more reasonable solution becomes available.
 CONFIG_ARCH_FORCE_MAX_ORDER=15

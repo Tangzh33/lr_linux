@@ -1718,3 +1718,13 @@ int generic_file_rw_checks(struct file *file_in, struct file *file_out)
 
 	return 0;
 }
+
+#ifdef CONFIG_LKL_ASTER
+SYSCALL_DEFINE4(read_file, unsigned long, file, void __user *, buf,
+		size_t, count, loff_t, pos)
+{
+	struct file *filp = (struct file *)file;
+
+	return vfs_read(filp, buf, count, &pos);
+}
+#endif

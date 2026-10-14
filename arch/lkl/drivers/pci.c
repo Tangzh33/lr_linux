@@ -111,21 +111,9 @@ static void *lkl_dma_alloc(struct device *dev, size_t size,
 			   dma_addr_t *dma_handle, gfp_t gfp,
 			   unsigned long attrs)
 {
-	struct page *page = alloc_pages(gfp, get_order(size));
-	void *vaddr;
-
-	if (!page)
-		return NULL;
-
-	vaddr = page_to_virt(page);
-	memset(vaddr, 0, size);
+	void *vaddr = page_to_virt(alloc_pages(gfp, get_order(size)));
 	*dma_handle = (dma_addr_t)lkl_ops->pci_ops->map_page(
 		to_pci_dev(dev)->sysdata, vaddr, size);
-	if (*dma_handle == 0) {
-		__free_pages(page, get_order(size));
-		return NULL;
-	}
-
 	return vaddr;
 }
 
@@ -133,7 +121,7 @@ static void lkl_dma_free(struct device *dev, size_t size, void *cpu_addr,
 			 dma_addr_t dma_addr, unsigned long attrs)
 {
 	lkl_ops->pci_ops->unmap_page(to_pci_dev(dev)->sysdata, dma_addr, size);
-	__free_pages(virt_to_page(cpu_addr), get_order(size));
+	__free_pages(cpu_addr, get_order(size));
 }
 
 static dma_addr_t lkl_dma_map_page(struct device *dev, struct page *page,

@@ -2,22 +2,15 @@
 
 C ?= default
 PCI_MSI ?= y
-
-ifneq ($(OUTPUT),)
-override OUTPUT := $(abspath $(OUTPUT))
-$(shell mkdir -p $(OUTPUT))
-endif
+SANDBOX ?= kernel
 
 include ../scripts/Makefile.include
 
 ifeq ($(OUTPUT),)
-OUTPUT := $(CURDIR)/build
-OUTBIN := $(CURDIR)/lkl.bin
+	KOPT := O=$(OUTPUT)
 else
-OUTBIN := $(OUTPUT)/lkl.bin
+	KOPT :=
 endif
-
-KOPT := O=$(OUTPUT)
 
 CONFIG   := $(OUTPUT)/.config
 CONFIG_H := $(OUTPUT)/arch/lkl/include/generated/uapi/asm/config.h
@@ -26,9 +19,22 @@ LKLOBJ   := $(OUTPUT)/lkl.o
 SOURCES  := main.c setup.S
 LINKSCR  := bin.lds
 OUTELF   := $(OUTPUT)/lkl.elf
+OUTBIN   := $(OUTPUT)/lkl.bin
 
-LKL_CFLAGS  := -nostdlib -fno-pic -no-pie -mcmodel=kernel \
-	       -mno-sse -mno-avx -mno-red-zone -fcf-protection
+LKL_CFLAGS  := -nostdlib -fno-pic -no-pie \
+	       -mno-mmx -mno-sse -mno-avx -mno-red-zone
+ifeq ($(SANDBOX),user)
+	BASE_ADDRESS = 0x40001000
+	LKL_CFLAGS += -mcmodel=small
+	UNSAFE_BYPASS_INDIRECT_MASK=1
+	export UNSAFE_BYPASS_INDIRECT_MASK
+else
+	BASE_ADDRESS = 0xffffffffc0001000
+	LKL_CFLAGS += -mcmodel=kernel -fcf-protection
+endif
+ifeq ($(UNSAFE_BYPASS_INDIRECT_MASK),)
+	LKL_CFLAGS += -mcet-switch -mindirect-branch-register
+endif
 export LKL_CFLAGS
 
 # This is required by the NVIDIA Linux open GPU kernel modules. See
@@ -39,14 +45,11 @@ export IGNORE_MISSING_MODULE_SYMVERS
 .PHONY: all
 all: $(OUTBIN)
 
-$(OUTPUT):
-	$(Q)mkdir -p $@
-
-$(CONFIG): | $(OUTPUT)
+$(CONFIG):
 	$(Q)$(MAKE) -C ../.. ARCH=lkl $(KOPT) allnoconfig
 	$(call QUIET_INSTALL, .config)cat configs/config >> $@
 	$(call QUIET_INSTALL, .config)cat configs/config.$(C) >> $@
-	$(call QUIET_INSTALL, .config)if [ "$(PCI_MSI)" = "y" ]; then \
+	$(call QUIET_INSTALL, .config)if [[ "$(PCI_MSI)" == "y" ]]; then \
 		echo "CONFIG_PCI_MSI=y" >> $@; \
 	fi
 	$(Q)$(MAKE) -C ../.. ARCH=lkl $(KOPT) oldnoconfig
@@ -62,8 +65,10 @@ $(LKLOBJ): $(CONFIG) $(CONFIG_H)
 
 $(OUTELF): $(LKLOBJ) $(SOURCES) $(LINKSCR)
 	$(Q)gcc $(LKL_CFLAGS) -Wall -Wextra -O2 \
+		-fplugin=$(OUTPUT)/scripts/gcc-plugins/indirect_mask_plugin.so \
 		-I$(OUTPUT)/include -I$(OUTPUT)/include/lkl \
-		-Wl,-T$(LINKSCR) -o $@ $(LKLOBJ) $(SOURCES)
+		-Wl,-T$(LINKSCR),--defsym,BASE_ADDRESS=$(BASE_ADDRESS) \
+		-o $@ $(LKLOBJ) $(SOURCES)
 
 $(OUTBIN): $(OUTELF)
 	$(Q)objcopy -O binary $< $@

@@ -161,6 +161,12 @@ __register_chrdev_region(unsigned int major, unsigned int baseminor,
 	}
 
 	mutex_unlock(&chrdevs_lock);
+
+#ifdef CONFIG_LKL_ASTER
+	extern void arch_cdev_register(unsigned int major, const char *name);
+	arch_cdev_register(major, name);
+#endif
+
 	return cd;
 out:
 	mutex_unlock(&chrdevs_lock);
@@ -494,6 +500,11 @@ int cdev_add(struct cdev *p, dev_t dev, unsigned count)
 		goto err;
 
 	kobject_get(p->kobj.parent);
+
+#ifdef CONFIG_LKL_ASTER
+	extern void arch_cdev_add(struct cdev *p, dev_t dev, unsigned count);
+	arch_cdev_add(p, dev, count);
+#endif
 
 	return 0;
 

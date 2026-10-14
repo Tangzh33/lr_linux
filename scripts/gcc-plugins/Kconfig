@@ -29,6 +29,14 @@ config GCC_PLUGIN_SANCOV
 	  gcc-4.5 on). It is based on the commit "Add fuzzing coverage support"
 	  by Dmitry Vyukov <dvyukov@google.com>.
 
+config GCC_PLUGIN_INDIRECT_MASK
+	bool
+	help
+	  This plugin inserts an operation that masks the target address before
+	  indirect calls and jumps. Assuming the kernel is in the top 2 GiB of
+	  address space, the mask operation forces indirect targets to be within
+	  that region.
+
 config GCC_PLUGIN_LATENT_ENTROPY
 	bool "Generate some entropy during boot and runtime"
 	help

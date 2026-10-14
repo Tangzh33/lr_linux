@@ -947,8 +947,18 @@ asmlinkage long sys_cachestat(unsigned int fd,
 		struct cachestat __user *cstat, unsigned int flags);
 asmlinkage long sys_map_shadow_stack(unsigned long addr, unsigned long size, unsigned int flags);
 
-asmlinkage long sys_get_address_space(int fd);
-asmlinkage long sys_create_mapping(int fd, unsigned long off, unsigned long len, int prot);
+asmlinkage long sys_open_file(unsigned long mnt, unsigned long dentry);
+asmlinkage long sys_steal_file(unsigned int fd);
+asmlinkage long sys_close_file(unsigned long file);
+asmlinkage long sys_poll_file(unsigned long file);
+asmlinkage long sys_read_file(unsigned long file, void __user *buf, size_t count, loff_t pos);
+asmlinkage long sys_ioctl_file(unsigned long file, unsigned int cmd, unsigned long arg);
+
+asmlinkage long sys_get_address_space(unsigned long file);
+asmlinkage long sys_create_mapping(unsigned long file,
+				   unsigned long off,
+				   unsigned long len,
+				   int prot);
 asmlinkage long sys_destroy_mapping(unsigned long mapping);
 asmlinkage long sys_handle_page_fault(unsigned long mapping, unsigned long offset, int prot);
 asmlinkage long sys_free_pinned_pages(unsigned long __user *paddrs, unsigned long npages);

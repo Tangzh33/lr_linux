@@ -58,8 +58,8 @@ extern void __f_unlock_pos(struct file *);
 #define fget_map fget_map
 static inline struct file *fget_map(unsigned int fd)
 {
-	extern int arch_fd_map(int fd);
-	return fget(arch_fd_map(fd));
+	extern struct file *arch_fd_map(int fd);
+	return arch_fd_map(fd);
 }
 #else
 #define fget_map fget

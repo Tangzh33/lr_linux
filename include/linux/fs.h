@@ -1024,6 +1024,10 @@ struct file {
 	/* Used by fs/eventpoll.c to link all the hooks to this file */
 	struct hlist_head	*f_ep;
 #endif /* #ifdef CONFIG_EPOLL */
+#ifdef CONFIG_LKL_ASTER
+	struct wait_queue_head	*f_wq_head;
+	struct wait_queue_entry	f_wq_entry;
+#endif /* #ifdef CONFIG_LKL_ASTER */
 	struct address_space	*f_mapping;
 	errseq_t		f_wb_err;
 	errseq_t		f_sb_err; /* for syncfs */

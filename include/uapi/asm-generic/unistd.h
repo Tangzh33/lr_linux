@@ -823,19 +823,32 @@ __SYSCALL(__NR_cachestat, sys_cachestat)
 #define __NR_fchmodat2 452
 __SYSCALL(__NR_fchmodat2, sys_fchmodat2)
 
-#define __NR_get_address_space 453
+#define __NR_open_file 453
+__SYSCALL(__NR_open_file, sys_open_file)
+#define __NR_steal_file 454
+__SYSCALL(__NR_steal_file, sys_steal_file)
+#define __NR_close_file 455
+__SYSCALL(__NR_close_file, sys_close_file)
+#define __NR_poll_file 456
+__SYSCALL(__NR_poll_file, sys_poll_file)
+#define __NR_read_file 457
+__SYSCALL(__NR_read_file, sys_read_file)
+#define __NR_ioctl_file 458
+__SYSCALL(__NR_ioctl_file, sys_ioctl_file)
+
+#define __NR_get_address_space 459
 __SYSCALL(__NR_get_address_space, sys_get_address_space)
-#define __NR_create_mapping 454
+#define __NR_create_mapping 460
 __SYSCALL(__NR_create_mapping, sys_create_mapping)
-#define __NR_destroy_mapping 455
+#define __NR_destroy_mapping 461
 __SYSCALL(__NR_destroy_mapping, sys_destroy_mapping)
-#define __NR_handle_page_fault 456
+#define __NR_handle_page_fault 462
 __SYSCALL(__NR_handle_page_fault, sys_handle_page_fault)
-#define __NR_free_pinned_pages 457
+#define __NR_free_pinned_pages 463
 __SYSCALL(__NR_free_pinned_pages, sys_free_pinned_pages)
 
 #undef __NR_syscalls
-#define __NR_syscalls 458
+#define __NR_syscalls 464
 
 /*
  * 32 bit systems traditionally used different

@@ -1876,27 +1876,22 @@ static int __meminit init_admin_reserve(void)
 subsys_initcall(init_admin_reserve);
 
 #ifdef CONFIG_LKL_ASTER
-SYSCALL_DEFINE1(get_address_space, int, fd)
+SYSCALL_DEFINE1(get_address_space, unsigned long, file)
 {
-	struct file *file;
+	struct file *filp;
 	long rc;
 
-	file = fget(fd);
-	if (!file)
-		return 0;
-
-	rc = (long)file->f_mapping;
-
-	fput(file);
+	filp = (struct file *)file;
+	rc = (long)filp->f_mapping;
 
 	return rc;
 }
 
 SYSCALL_DEFINE4(create_mapping,
-		int, fd, unsigned long, off,
+		unsigned long, file, unsigned long, off,
 		unsigned long, len, int, prot)
 {
-	struct file *file;
+	struct file *filp;
 	struct vm_area_struct *vma;
 	unsigned long vm_flags;
 	int ret;
@@ -1908,20 +1903,18 @@ SYSCALL_DEFINE4(create_mapping,
 	if (off + len <= off)
 		return 0;
 
-	file = fget(fd);
-	if (!file)
-		return 0;
+	filp = (struct file *)file;
 
-	if (!file->f_op->mmap)
-		goto err_fput;
-	if (!(file->f_mode & FMODE_READ))
-		goto err_fput;
-	if ((prot & PROT_WRITE) && !(file->f_mode & FMODE_WRITE))
-		goto err_fput;
+	if (!filp->f_op->mmap)
+		return 0;
+	if (!(filp->f_mode & FMODE_READ))
+		return 0;
+	if ((prot & PROT_WRITE) && !(filp->f_mode & FMODE_WRITE))
+		return 0;
 
 	vma = vm_area_alloc(current->mm);
 	if (!vma)
-		goto err_fput;
+		return 0;
 
 	vm_flags = VM_READ | VM_MAYREAD | VM_SHARED | VM_MAYSHARE;
 	if (prot & PROT_WRITE)
@@ -1932,10 +1925,11 @@ SYSCALL_DEFINE4(create_mapping,
 	vma->vm_end = off + len;
 	vma->vm_pgoff = off >> PAGE_SHIFT;
 
-	vma->vm_file = file;
+	get_file(filp);
+	vma->vm_file = filp;
 
 	mmap_write_lock(current->mm);
-	ret = call_mmap(file, vma);
+	ret = call_mmap(filp, vma);
 	mmap_write_unlock(current->mm);
 
 	if (ret < 0)
@@ -1956,9 +1950,6 @@ err_close:
 
 err_free:
 	vm_area_free(vma);
-
-err_fput:
-	fput(file);
 
 	return 0;
 }

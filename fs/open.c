@@ -1658,3 +1658,80 @@ int stream_open(struct inode *inode, struct file *filp)
 }
 
 EXPORT_SYMBOL(stream_open);
+
+#ifdef CONFIG_LKL_ASTER
+extern int arch_poll_wake(struct wait_queue_entry *wq_entry,
+			  unsigned mode, int flags, void *key);
+
+static void aster_poll_queue_proc(struct file *filp,
+				  wait_queue_head_t *wait_address,
+				  poll_table *p)
+{
+	if (WARN_ON(filp->f_wq_head))
+		return;
+
+	filp->f_wq_head = wait_address;
+
+	init_waitqueue_func_entry(&filp->f_wq_entry, &arch_poll_wake);
+	add_wait_queue(wait_address, &filp->f_wq_entry);
+}
+
+SYSCALL_DEFINE2(open_file, unsigned long, mnt, unsigned long, dentry)
+{
+	struct path path;
+	struct file *file;
+	poll_table pt;
+
+	path.mnt = (struct vfsmount *)mnt;
+	path.dentry = (struct dentry *)dentry;
+
+	file = dentry_open(&path, O_RDWR | O_NONBLOCK, current_cred());
+	if (IS_ERR(file))
+		return 0;
+
+	pt._qproc = &aster_poll_queue_proc;
+	pt._key = EPOLLIN | EPOLLOUT;
+	vfs_poll(file, &pt);
+
+	return (long)file;
+}
+
+SYSCALL_DEFINE1(steal_file, unsigned int, fd)
+{
+	struct file *file;
+	poll_table pt;
+
+	file = close_fd_get_file(fd);
+	if (!file)
+		return 0;
+
+	spin_lock(&file->f_lock);
+	file->f_flags |= O_NONBLOCK;
+	spin_unlock(&file->f_lock);
+
+	pt._qproc = &aster_poll_queue_proc;
+	pt._key = EPOLLIN | EPOLLOUT;
+	vfs_poll(file, &pt);
+
+	return (long)file;
+}
+
+SYSCALL_DEFINE1(close_file, unsigned long, file)
+{
+	struct file *filp = (struct file *)file;
+
+	if (filp->f_wq_head)
+		remove_wait_queue(filp->f_wq_head, &filp->f_wq_entry);
+
+	fput(filp);
+
+	return 0;
+}
+
+SYSCALL_DEFINE1(poll_file, unsigned long, file)
+{
+	struct file *filp = (struct file *)file;
+
+	return vfs_poll(filp, NULL);
+}
+#endif

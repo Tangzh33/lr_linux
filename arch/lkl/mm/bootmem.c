@@ -62,13 +62,13 @@ void __init bootmem_init(unsigned long mem_sz)
 	extern long _asterinas_block_dma_start;
 	extern long _asterinas_block_dma_end;
 
-#define REVERSED_DMA_REGION_SIZE (1024 * 1024) /* 1 MiB */
+#define RESERVED_DMA_REGION_SIZE (8 * 1024 * 1024) /* 8 MiB */
 
 	_asterinas_block_dma_start =
-		(long)memblock_alloc(REVERSED_DMA_REGION_SIZE, PAGE_SIZE);
+		(long)memblock_alloc(RESERVED_DMA_REGION_SIZE, PAGE_SIZE);
 	if (_asterinas_block_dma_start) {
 		_asterinas_block_dma_end =
-			_asterinas_block_dma_start + REVERSED_DMA_REGION_SIZE;
+			_asterinas_block_dma_start + RESERVED_DMA_REGION_SIZE;
 	}
 #endif
 }

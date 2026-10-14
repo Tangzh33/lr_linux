@@ -981,3 +981,17 @@ COMPAT_SYSCALL_DEFINE3(ioctl, unsigned int, fd, unsigned int, cmd,
 	return error;
 }
 #endif
+
+#ifdef CONFIG_LKL_ASTER
+SYSCALL_DEFINE3(ioctl_file, unsigned long, file,
+		unsigned int, cmd, unsigned long, arg)
+{
+	struct file *filp;
+	long rc;
+
+	filp = (struct file *)file;
+	rc = vfs_ioctl(filp, cmd, arg);
+
+	return rc;
+}
+#endif

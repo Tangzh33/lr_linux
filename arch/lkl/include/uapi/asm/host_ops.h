@@ -195,7 +195,11 @@ struct lkl_host_operations {
 
 	long (*firmware_read)(const char *path, unsigned long path_size,
 				void *buf, unsigned long buf_size);
-	int (*fd_map)(int fd);
+	void (*poll_wake)(unsigned long file, unsigned int events);
+	unsigned long (*fd_map)(int fd);
+	void (*cdev_register)(unsigned int major, const char *name);
+	int (*devtmpfs_create)(unsigned long mnt, unsigned long dentry,
+				unsigned int devt);
 
 	void (*jmp_buf_set)(struct lkl_jmp_buf *jmpb, void (*f)(void));
 	void (*jmp_buf_longjmp)(struct lkl_jmp_buf *jmpb, int val);

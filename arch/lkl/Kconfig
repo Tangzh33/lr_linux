@@ -190,6 +190,9 @@ source "arch/lkl/aster/Kconfig"
 config LKL_ASTER
 	bool "Asterinas-specific LKL extensions"
 	default n
+	select HAVE_GCC_PLUGINS
+	select GCC_PLUGINS
+	select GCC_PLUGIN_INDIRECT_MASK
 	help
 	  Say "Y" if the LKL is intended to be used with Asterinas; say "N"
 	  otherwise.
