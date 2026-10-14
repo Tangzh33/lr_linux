@@ -2,6 +2,12 @@
 
 __SYSCALL(__NR_virtio_mmio_device_add, sys_virtio_mmio_device_add)
 __SYSCALL(__NR_new_thread_group_leader, sys_new_thread_group_leader)
+__SYSCALL(__NR_aster_nlmsg_create, sys_aster_nlmsg_create)
+__SYSCALL(__NR_aster_nlmsg_send, sys_aster_nlmsg_send)
+__SYSCALL(__NR_aster_nlmsg_recv, sys_aster_nlmsg_recv)
+__SYSCALL(__NR_aster_nlmsg_quiesce, sys_aster_nlmsg_quiesce)
+__SYSCALL(__NR_aster_nlmsg_release, sys_aster_nlmsg_release)
+__SYSCALL(__NR_aster_nlmsg_join, sys_aster_nlmsg_join)
 
 #define __SC_ASCII(t, a) #t "," #a
 
