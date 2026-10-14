@@ -15,6 +15,7 @@
 #include <asm/syscalls_32.h>
 #include <asm/cpu.h>
 #include <asm/sched.h>
+#include <asm/aster/nlmsg.h>
 
 static asmlinkage long sys_virtio_mmio_device_add(long base, long size,
 						  unsigned int irq);
