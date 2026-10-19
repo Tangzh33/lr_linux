@@ -1,0 +1,11 @@
+libhijack-priv-y += hijack.o
+libhijack-priv-y += init.o
+libhijack-priv-y += xlate.o
+libhijack-priv-y += dbg_handler.o
+
+liblkl-hijack-y += preload.o
+
+liblkl-zpoline-y += zpoline.o
+
+# -std=gnu23/c23 fails due to HOST_CALL (*host_##name)()
+CFLAGS_hijack.o += -std=gnu11

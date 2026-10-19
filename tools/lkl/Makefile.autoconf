@@ -1,0 +1,277 @@
+POSIX_HOSTS=elf64 elf32
+KASAN_HOSTS=elf64-x86-64
+NT_HOSTS=pe
+
+define set_autoconf_var
+  $(shell echo "#define LKL_HOST_CONFIG_$(1) $(2)" \
+	  >> $(OUTPUT)/include/lkl_autoconf.h)
+  $(shell echo "LKL_HOST_CONFIG_$(1)=$(2)" >> $(OUTPUT)/tests/autoconf.sh)
+  export LKL_HOST_CONFIG_$(1)=$(2)
+endef
+
+define set_kernel_config
+$(shell echo "CONFIG_$(1)=$(2)" >> $(OUTPUT)/kernel.config)
+endef
+
+define find_include
+  $(eval include_paths=$(shell $(CC) -E -Wp,-v -xc /dev/null 2>&1 | grep '^ '))
+  $(foreach f, $(include_paths), $(wildcard $(f)/$(1)))
+endef
+
+define is_defined
+$(shell $(CC) -dM -E - </dev/null | grep $(1))
+endef
+
+define android_host
+  $(call set_autoconf_var,ANDROID,y)
+endef
+
+define bsd_host
+  $(call set_autoconf_var,BSD,y)
+endef
+
+define arm_host
+  $(call set_autoconf_var,ARM,y)
+endef
+
+define aarch64_host
+  $(call set_autoconf_var,AARCH64,y)
+endef
+
+define riscv64_host
+  $(call set_autoconf_var,RISCV64,y)
+  LDFLAGS += -Wl,--no-relax
+endef
+
+define virtio_net_dpdk
+  $(call set_autoconf_var,VIRTIO_NET_DPDK,y)
+  RTE_SDK ?= $(OUTPUT)/dpdk-17.02
+  RTE_TARGET ?= build
+  DPDK_LIBS = -lrte_pmd_vmxnet3_uio -lrte_pmd_ixgbe -lrte_pmd_e1000
+  DPDK_LIBS += -lrte_pmd_virtio
+  DPDK_LIBS += -lrte_timer -lrte_hash -lrte_mbuf -lrte_ethdev -lrte_eal
+  DPDK_LIBS += -lrte_mempool -lrte_ring -lrte_pmd_ring
+  DPDK_LIBS += -lrte_kvargs -lrte_net
+  CFLAGS += -I$$(RTE_SDK)/$$(RTE_TARGET)/include -msse4.2 -mpopcnt
+  LDFLAGS +=-L$$(RTE_SDK)/$$(RTE_TARGET)/lib
+  LDFLAGS +=-Wl,--whole-archive $$(DPDK_LIBS) -Wl,--no-whole-archive -lm -ldl
+  LDFLAGS +=-z noexecstack
+endef
+
+define virtio_net_vde
+  $(call set_autoconf_var,VIRTIO_NET_VDE,y)
+  LDLIBS += $(shell pkg-config --libs vdeplug)
+endef
+
+define zpoline_conf
+  $(eval zpoline_dir=$(abspath $(srctree)/$(1)))
+  $(if $(strip $(foreach f, $(zpoline_dir), $(wildcard $(f)/libzpoline.so))),$(call set_autoconf_var,ZPOLINE_DIR,$(zpoline_dir)))
+endef
+
+define posix_host
+  $(call set_autoconf_var,POSIX,y)
+  $(call set_autoconf_var,VIRTIO_NET,y)
+  $(call set_autoconf_var,VIRTIO_NET_FD,y)
+  $(if $(strip $(call find_include,linux/vfio.h)),$(call set_autoconf_var,VFIO_PCI,y))
+  LDFLAGS += -pie -z noexecstack
+  CFLAGS += -fPIC -pthread
+  SOSUF := .so
+  $(if $(call is_defined,__ANDROID__),$(call android_host),LDLIBS += -lrt -lpthread)
+  $(if $(filter $(1),elf64-x86-64-freebsd),$(call bsd_host))
+  $(if $(filter $(1),elf32-littlearm),$(call arm_host))
+  $(if $(filter $(1),elf64-littleaarch64),$(call aarch64_host))
+  $(if $(filter $(1),elf64-littleriscv),$(call riscv64_host))
+  $(if $(filter yes,$(dpdk)),$(call virtio_net_dpdk))
+  $(if $(filter yes,$(vde)),$(call virtio_net_vde))
+  $(if $(strip $(call find_include,fuse3/fuse.h)),$(call set_autoconf_var,FUSE,y))
+  $(if $(strip $(call find_include,archive.h)),$(call set_autoconf_var,ARCHIVE,y))
+  $(if $(strip $(call find_include,linux/if_tun.h)),$(call set_autoconf_var,VIRTIO_NET_MACVTAP,y))
+  $(if $(filter $(1),elf64-x86-64-freebsd),$(call set_autoconf_var,NEEDS_LARGP,y))
+  $(if $(filter $(1),elf32-i386),$(call set_autoconf_var,I386,y))
+  $(if $(strip $(call find_include,jsmn.h)),$(call set_autoconf_var,JSMN,y))
+  $(if $(filter %,$(zpoline)),$(call zpoline_conf,$(zpoline)))
+endef
+
+define nt64_host
+  $(call set_autoconf_var,NEEDS_LARGP,y)
+  $(call set_autoconf_var,VIRTIO_NET,y)
+  $(call set_autoconf_var,NT64,y)
+  CFLAGS += -Wl,--enable-auto-image-base -Wl,--image-base -Wl,0x10000000 \
+	 -Wl,--out-implib=$(OUTPUT)liblkl.dll.a -Wl,--export-all-symbols \
+	 -Wl,--enable-auto-import
+  LDFLAGS +=-Wl,--image-base -Wl,0x10000000 -Wl,--enable-auto-image-base \
+	   -Wl,--out-implib=$(OUTPUT)liblkl.dll.a -Wl,--export-all-symbols \
+	   -Wl,--enable-auto-import -s
+endef
+
+define nt_host
+  $(call set_autoconf_var,NT,y)
+  KOPT = "KALLSYMS_EXTRA_PASS=1"
+  KOPT += "HOSTCFLAGS=-Wno-char-subscripts"
+  KOPT += "HOSTLDFLAGS=-s"
+  LDLIBS += -lws2_32
+  EXESUF := .exe
+  SOSUF := .dll
+  CFLAGS += -Iinclude/mingw32
+  $(if $(filter $(1),pe-x86-64),$(call nt64_host))
+endef
+
+define kasan_test_enable
+  $(call set_kernel_config,KUNIT,y)
+  $(call set_kernel_config,BUILTIN_CMDLINE,\"kunit.filter_glob=\")
+  $(call set_kernel_config,KASAN_KUNIT_TEST,y)
+endef
+
+define kasan_enable
+  $(call set_kernel_config,KASAN,y)
+  $(if $(filter yes,$(kasan_test)), $(call kasan_test_enable))
+endef
+
+define do_autoconf_gnu
+  export CROSS_COMPILE := $(CROSS_COMPILE)
+  export CC := $(CROSS_COMPILE)gcc
+  export LD := $(CROSS_COMPILE)ld
+  export AR := $(CROSS_COMPILE)ar
+  $(eval LD := $(CROSS_COMPILE)ld)
+  $(eval CC := $(CROSS_COMPILE)gcc)
+  $(eval LD_FMT := $(shell $(LD) -r -print-output-format))
+endef
+
+define llvm_target_to_ld_fmt
+  $(if $(filter $(CROSS_COMPILE),x86_64-linux-gnu),elf64-x86-64,\
+    $(error Unsupported LLVM target $(CROSS_COMPILE)))
+endef
+
+define do_autoconf_llvm
+  $(eval LLVM_PREFIX := $(if $(filter %/,$(LLVM)),$(LLVM)))
+  $(eval LLVM_SUFFIX := $(if $(filter -%,$(LLVM)),$(LLVM)))
+  export CLANG_TARGET_FLAGS_lkl := $(CROSS_COMPILE)
+  export CC := $(LLVM_PREFIX)clang$(LLVM_SUFFIX)
+  export CXX := $(LLVM_PREFIX)clang++$(LLVM_SUFFIX)
+  export LD := $(LLVM_PREFIX)ld.lld$(LLVM_SUFFIX)
+  export AR := $(LLVM_PREFIX)llvm-ar$(LLVM_SUFFIX)
+  $(eval LD := $(LLVM_PREFIX)ld.lld$(LLVM_SUFFIX))
+  $(eval CC := $(LLVM_PREFIX)clang$(LLVM_SUFFIX))
+  $(eval LD_FMT := $(call llvm_target_to_ld_fmt))
+endef
+
+define define_libprotobuf_mutator
+  $(eval PROTOC_PATH := $(PROTOBUF_MUTATOR_DIR)/build/external.protobuf/bin/protoc)
+  export PROTOC_PATH := $(PROTOC_PATH)
+
+  # Tell compiler where to find libprotobuf-mutator-related headers
+  export LIBPROTOBUF_MUTATOR_INCLUDES_DIR := -I$(PROTOBUF_MUTATOR_DIR) \
+    -I$(PROTOBUF_MUTATOR_DIR)/build/external.protobuf/include
+
+  # Tell linker where to find libprotobuf-mutator-related static libs
+  export LIBPROTOBUF_MUTATOR_LIBS_DIR := -L$(PROTOBUF_MUTATOR_DIR)/build/src \
+	  -L$(PROTOBUF_MUTATOR_DIR)/build/src/libfuzzer \
+	  -L$(PROTOBUF_MUTATOR_DIR)/build/external.protobuf/lib
+
+  # The same list of absl dependencies as in libprotobuf-mutator cmake config:
+  # https://github.com/google/libprotobuf-mutator/blob/master/cmake/external/protobuf.cmake
+  $(eval LIBPROTOBUF_LIBS := protobufd \
+    absl_bad_any_cast_impl absl_bad_optional_access absl_bad_variant_access \
+    absl_base absl_city absl_civil_time absl_cord absl_cord_internal \
+    absl_cordz_functions absl_cordz_handle absl_cordz_info \
+    absl_cordz_sample_token absl_crc_cord_state absl_crc_cpu_detect \
+    absl_crc_internal absl_crc32c absl_debugging_internal \
+    absl_demangle_internal absl_die_if_null absl_examine_stack \
+    absl_exponential_biased absl_failure_signal_handler \
+    absl_flags_commandlineflag absl_flags_commandlineflag_internal \
+    absl_flags_config absl_flags_internal absl_flags_marshalling \
+    absl_flags_parse absl_flags_private_handle_accessor \
+    absl_flags_program_name absl_flags_reflection absl_flags_usage \
+    absl_flags_usage_internal absl_graphcycles_internal absl_hash \
+    absl_hashtablez_sampler absl_int128 absl_kernel_timeout_internal \
+    absl_leak_check absl_log_entry absl_log_flags absl_log_globals \
+    absl_log_initialize absl_log_internal_check_op \
+    absl_log_internal_conditions absl_log_internal_format \
+    absl_log_internal_globals absl_log_internal_log_sink_set \
+    absl_log_internal_message absl_log_internal_nullguard \
+    absl_log_internal_proto absl_log_severity \
+    absl_log_sink absl_low_level_hash absl_malloc_internal \
+    absl_periodic_sampler absl_random_distributions \
+    absl_random_internal_distribution_test_util absl_random_internal_platform \
+    absl_random_internal_pool_urbg absl_random_internal_randen \
+    absl_random_internal_randen_hwaes absl_random_internal_randen_hwaes_impl \
+    absl_random_internal_randen_slow absl_random_internal_seed_material \
+    absl_random_seed_gen_exception absl_random_seed_sequences \
+    absl_raw_hash_set absl_raw_logging_internal absl_scoped_set_env \
+    absl_spinlock_wait absl_stacktrace absl_status \
+    absl_statusor absl_str_format_internal absl_strerror \
+    absl_string_view absl_strings absl_strings_internal \
+    absl_symbolize absl_synchronization absl_throw_delegate \
+    absl_time absl_time_zone utf8_validity)
+
+  export LIBPROTOBUF_MUTATOR_LIBS := \
+    -lprotobuf-mutator-libfuzzer -lprotobuf-mutator \
+    $(addprefix -l,$(LIBPROTOBUF_LIBS))
+
+  # Libprotobuf-mutator build safety checks
+  $(if $(wildcard $(PROTOC_PATH)),,\
+    $(error Cannot find protoc binary at $(PROTOC_PATH). \
+      Refer to documentation at tools/lkl/fuzzers/binder/README.md))
+
+  $(if $(wildcard $(PROTOBUF_MUTATOR_DIR)/build/src/libprotobuf-mutator.a),,\
+    $(error Cannot find libprotobuf-mutator.a in \
+      $(abspath $(PROTOBUF_MUTATOR_DIR)/build/src/). \
+      Refer to documentation at tools/lkl/fuzzers/binder/README.md))
+
+  $(if $(wildcard $(PROTOBUF_MUTATOR_DIR)/build/src/libfuzzer/libprotobuf-mutator-libfuzzer.a),,\
+    $(error Cannot find libprotobuf-mutator-libfuzzer.a in \
+      $(abspath $(PROTOBUF_MUTATOR_DIR)/build/src/libfuzzer/). \
+      Refer to documentation at tools/lkl/fuzzers/binder/README.md))
+
+  $(foreach protobuf_lib,$(LIBPROTOBUF_LIBS),\
+     $(if $(wildcard $(PROTOBUF_MUTATOR_DIR)/build/external.protobuf/lib/lib$(protobuf_lib).a),,\
+        $(error Cannot find lib$(protobuf_lib).a in \
+          $(PROTOBUF_MUTATOR_DIR)/build/external.protobuf/lib/. \
+          Refer to documentation at tools/lkl/fuzzers/binder/README.md)))
+endef
+
+define do_autoconf_fuzzing
+  export KCONFIG := fuzzing_defconfig
+  export LLVM := 1
+  export CROSS_COMPILE := x86_64-linux-gnu
+  $(eval LLVM := 1)
+  $(eval CROSS_COMPILE := x86_64-linux-gnu)
+  $(eval kasan := yes)
+  $(if $(LKL_LINE_COV),$(call set_kernel_config,LKL_LINE_COV,y))
+  $(if $(MMU),$(call set_kernel_config,ANDROID_BINDER_IPC,y))
+  $(if $(PROTOBUF_MUTATOR_DIR),$(call define_libprotobuf_mutator))
+  LDFLAGS += -fuse-ld=lld
+endef
+
+define mmu_test_enable
+  $(call set_autoconf_var,LKL_MMU_TEST,y)
+  $(call set_kernel_config,KUNIT,y)
+  $(call set_kernel_config,LKL_MMU_KUNIT_TEST,y)
+endef
+
+define do_autoconf_mmu
+  $(call set_autoconf_var,MMU,y)
+  $(call set_kernel_config,MMU,y)
+  $(if $(MMU_KUNIT), $(call mmu_test_enable))
+endef
+
+define do_autoconf
+  $(if $(LKL_FUZZING),$(call do_autoconf_fuzzing))
+  $(if $(LLVM),$(call do_autoconf_llvm),$(call do_autoconf_gnu))
+  $(eval EXEC_FMT := $(shell echo $(LD_FMT) | cut -d "-" -f1))
+  $(if $(filter $(EXEC_FMT),$(POSIX_HOSTS)),$(call posix_host,$(LD_FMT)))
+  $(if $(filter $(EXEC_FMT),$(NT_HOSTS)),$(call nt_host,$(LD_FMT)))
+  $(if $(and $(filter yes,$(kasan)),$(filter $(LD_FMT),$(KASAN_HOSTS))),$(call kasan_enable,$(LD_FMT)))
+  $(if $(MMU),$(call do_autoconf_mmu))
+endef
+
+export do_autoconf
+
+
+$(OUTPUT)Makefile.conf: Makefile.autoconf
+	$(shell mkdir -p $(OUTPUT)/include)
+	$(shell mkdir -p $(OUTPUT)/tests)
+	$(shell echo -n "" > $(OUTPUT)/include/lkl_autoconf.h)
+	$(shell echo -n "" > $(OUTPUT)/kernel.config)
+	$(shell echo -n "" > $(OUTPUT)/tests/autoconf.sh)
+	@echo "$$do_autoconf" > $(OUTPUT)/Makefile.conf
